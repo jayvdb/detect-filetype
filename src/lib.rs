@@ -30,23 +30,61 @@ impl FileType {
     }
 }
 
-enum Magic {
-    StartsWith { bytes: &'static [u8], offset: usize },
-    // Only used for TGA, which obnoxiously has no leading magic number for some reason
-    EndsWith { bytes: &'static [u8] },
+struct Check {
+    bytes: &'static [u8],
+    offset: usize,
+}
+
+impl Check {
+    const fn default() -> Self {
+        const EMPTY: &[u8] = &[];
+
+        Check {
+            bytes: EMPTY,
+            offset: 0,
+        }
+    }
+
+    const fn new(bytes: &'static [u8]) -> Self {
+        Self::new_with_offset(0, bytes)
+    }
+
+    const fn new_with_offset(offset: usize, bytes: &'static [u8]) -> Self {
+        Check { bytes, offset }
+    }
+}
+
+impl Default for Check {
+    fn default() -> Self {
+        Check::default()
+    }
+}
+
+struct Magic {
+    start: Check,
+    end: Check,
 }
 
 impl Magic {
     const fn starts_with(bytes: &'static [u8]) -> Self {
-        Magic::StartsWith { bytes, offset: 0 }
+        Magic {
+            start: Check::new(bytes),
+            end: Check::default(),
+        }
     }
 
     const fn starts_with_offset(offset: usize, bytes: &'static [u8]) -> Self {
-        Magic::StartsWith { bytes, offset }
+        Magic {
+            start: Check::new_with_offset(offset, bytes),
+            end: Check::default(),
+        }
     }
 
     const fn ends_with(bytes: &'static [u8]) -> Self {
-        Magic::EndsWith { bytes }
+        Magic {
+            start: Check::default(),
+            end: Check { bytes, offset: 0 },
+        }
     }
 }
 
@@ -54,7 +92,10 @@ const MAGIC_MAP: &[(Magic, FileType)] = &[
     (Magic::ends_with(b"TRUEVISION-XFILE.\0"), FileType::Tga),
     (Magic::starts_with(&[0xff, 0xd8]), FileType::Jpeg),
     (
-        Magic::starts_with(&[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+        Magic {
+            start: Check::new(&[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+            end: Check::new(&[0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82]),
+        },
         FileType::Png,
     ),
     (Magic::starts_with(b"BM"), FileType::Bmp),
@@ -70,20 +111,10 @@ const MAGIC_MAP: &[(Magic, FileType)] = &[
 
 pub fn detect_filetype(bytes: &[u8]) -> Option<FileType> {
     for (magic, ty) in MAGIC_MAP {
-        match magic {
-            Magic::StartsWith {
-                bytes: expected,
-                offset,
-            } => {
-                if bytes[*offset..].starts_with(expected) {
-                    return Some(*ty);
-                }
-            }
-            Magic::EndsWith { bytes: expected } => {
-                if bytes.ends_with(expected) {
-                    return Some(*ty);
-                }
-            }
+        if bytes[magic.start.offset..].starts_with(magic.start.bytes)
+            && bytes[..bytes.len() - magic.end.offset].ends_with(magic.end.bytes)
+        {
+            return Some(*ty);
         }
     }
 
