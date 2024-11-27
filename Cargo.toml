@@ -1,7 +1,8 @@
 [package]
 name = "detect-filetype"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Jef <jackefransham@gmail.com>"]
+repository = "https://github.com/eira-fransham/detect-filetype"
 edition = "2018"
 
 [dependencies]
